@@ -121,7 +121,7 @@ class RunningTheory {
     val LambdaTermFormula(vars, body) = expression
     if (belongsToTheory(body))
       if (isAvailable(label))
-        if (body.schematicTerms.subsetOf(vars.toSet) && body.schematicPredicates.isEmpty) {
+        if (body.freeSchematicTermLabels.subsetOf(vars.toSet) && body.schematicPredicateLabels.isEmpty) {
           val newDef = PredicateDefinition(label, expression)
           predDefinitions.update(label, Some(newDef))
           knownSymbols.update(label.id, label)
@@ -156,7 +156,7 @@ class RunningTheory {
     val LambdaTermFormula(vars, body) = expression
     if (belongsToTheory(body))
       if (isAvailable(label)) {
-        if (body.schematicTerms.subsetOf((vars appended out).toSet) && body.schematicPredicates.isEmpty)
+        if (body.freeSchematicTermLabels.subsetOf((vars appended out).toSet) && body.schematicPredicateLabels.isEmpty) {
           if (proof.imports.forall(i => justifications.exists(j => isSameSequent(i, sequentFromJustification(j))))) {
             val r = SCProofChecker.checkSCProof(proof)
             r match {
@@ -175,7 +175,13 @@ class RunningTheory {
               case r @ SCProofCheckerJudgement.SCInvalidProof(_, path, message) => InvalidJustification("The given proof is incorrect: " + message, Some(r))
             }
           } else InvalidJustification("Not all imports of the proof are correctly justified.", None)
-        else InvalidJustification("The definition is not allowed to contain schematic symbols or free variables.", None)
+        } else {
+          println(body.schematicTermLabels.subsetOf((vars appended out).toSet))
+          println(body.schematicTermLabels)
+          println((vars appended out).toSet)
+          println(body.schematicPredicateLabels.isEmpty)
+          InvalidJustification("The definition is not allowed to contain schematic symbols or free variables.", None)
+        }
       } else InvalidJustification("The specified symbol id is already part of the theory and can't be redefined.", None)
     else InvalidJustification("All symbols in the conclusion of the proof must belong to the theory. You need to add missing symbols to the theory.", None)
   }
@@ -184,7 +190,7 @@ class RunningTheory {
     case Theorem(name, proposition) => proposition
     case Axiom(name, ax) => Sequent(Set.empty, Set(ax))
     case PredicateDefinition(label, LambdaTermFormula(vars, body)) =>
-      val inner = ConnectorFormula(Iff, Seq(PredicateFormula(label, vars.map(VariableTerm)), body))
+      val inner = ConnectorFormula(Iff, Seq(PredicateFormula(label, vars.map(VariableTerm.apply)), body))
       Sequent(Set(), Set(inner))
     case FunctionDefinition(label, out, LambdaTermFormula(vars, body)) =>
       val inner = BinderFormula(
@@ -193,7 +199,7 @@ class RunningTheory {
         ConnectorFormula(
           Iff,
           Seq(
-            PredicateFormula(equality, Seq(FunctionTerm(label, vars.map(VariableTerm)), VariableTerm(out))),
+            PredicateFormula(equality, Seq(Term(label, vars.map(VariableTerm.apply)), VariableTerm(out))),
             body
           )
         )
@@ -212,15 +218,15 @@ class RunningTheory {
     case PredicateFormula(label, args) =>
       label match {
         case l: ConstantPredicateLabel => isSymbol(l) && args.forall(belongsToTheory)
-        case _: SchematicPredicateLabel => args.forall(belongsToTheory)
+        case _ => args.forall(belongsToTheory)
       }
     case ConnectorFormula(label, args) => args.forall(belongsToTheory)
     case BinderFormula(label, bound, inner) => belongsToTheory(inner)
   }
 
   def makeFormulaBelongToTheory(phi: Formula): Unit = {
-    phi.constantPredicates.foreach(addSymbol)
-    phi.constantFunctions.foreach(addSymbol)
+    phi.constantPredicateLabels.foreach(addSymbol)
+    phi.constantTermLabels.foreach(addSymbol)
   }
 
   /**
@@ -230,11 +236,10 @@ class RunningTheory {
    * @return Weather t belongs to the specified language
    */
   def belongsToTheory(t: Term): Boolean = t match {
-    case VariableTerm(label) => true
-    case FunctionTerm(label, args) =>
+    case Term(label, args) =>
       label match {
         case l: ConstantFunctionLabel => isSymbol(l) && args.forall(belongsToTheory(_))
-        case _: SchematicFunctionLabel => args.forall(belongsToTheory(_))
+        case _: SchematicTermLabel => args.forall(belongsToTheory(_))
       }
 
   }

@@ -85,7 +85,7 @@ abstract class Library(val theory: RunningTheory) {
       case Judgement.ValidJustification(just) =>
         last = Some(just)
         just
-      case wrongJudgement: Judgement.InvalidJustification[_] => wrongJudgement.showAndGet
+      case wrongJudgement: Judgement.InvalidJustification[?] => wrongJudgement.showAndGet
     }
 
     /**
@@ -101,7 +101,7 @@ abstract class Library(val theory: RunningTheory) {
    */
   def simpleDefinition(symbol: String, expression: LambdaTermTerm): Judgement[theory.FunctionDefinition] = {
     val LambdaTermTerm(vars, body) = expression
-    val out: VariableLabel = VariableLabel(freshId((vars.map(_.id) ++ body.schematicTerms.map(_.id)).toSet, "y"))
+    val out: VariableLabel = VariableLabel(freshId((vars.map(_.id) ++ body.schematicTermLabels.map(_.id)).toSet, "y"))
     val proof: Proof = simpleFunctionDefinition(expression, out)
     theory.functionDefinition(symbol, LambdaTermFormula(vars, out === body), out, proof, Nil)
   }
@@ -135,7 +135,7 @@ abstract class Library(val theory: RunningTheory) {
         case Judgement.ValidJustification(just) =>
           last = Some(just)
           just
-        case wrongJudgement: Judgement.InvalidJustification[_] => wrongJudgement.showAndGet
+        case wrongJudgement: Judgement.InvalidJustification[?] => wrongJudgement.showAndGet
       }
       definition.label
     }
@@ -148,7 +148,7 @@ abstract class Library(val theory: RunningTheory) {
         case Judgement.ValidJustification(just) =>
           last = Some(just)
           just
-        case wrongJudgement: Judgement.InvalidJustification[_] => wrongJudgement.showAndGet
+        case wrongJudgement: Judgement.InvalidJustification[?] => wrongJudgement.showAndGet
       }
       definition.label
     }
@@ -194,7 +194,7 @@ abstract class Library(val theory: RunningTheory) {
         case Judgement.ValidJustification(just) =>
           last = Some(just)
           just
-        case wrongJudgement: Judgement.InvalidJustification[_] => wrongJudgement.showAndGet
+        case wrongJudgement: Judgement.InvalidJustification[?] => wrongJudgement.showAndGet
       }
       definition.label
     }
