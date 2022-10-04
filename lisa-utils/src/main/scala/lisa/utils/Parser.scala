@@ -339,7 +339,7 @@ object Parser {
       }
     )
 
-    val predicate: Syntax[PredicateFormula] = (elem(FunctionOrPredicateKind) ~ opt(args) ~ opt(eq.skip ~ elem(FunctionOrPredicateKind) ~ opt(args))).map(
+    val predicate: Syntax[PredicateFormula] = (elem(FunctionOrPredicateKind) ~ opt(args) ~ opt(eq.skip ~ term)).map(
       {
         // predicate application
         case ConstantToken(id) ~ maybeArgs ~ None =>
@@ -350,8 +350,8 @@ object Parser {
           PredicateFormula(VariableFormulaLabel(id), Seq())
 
         // equality of two function applications
-        case fun1 ~ args1 ~ Some(fun2 ~ args2) =>
-          PredicateFormula(FOL.equality, Seq(createFunctionTerm(fun1, args1.getOrElse(Seq())), createFunctionTerm(fun2, args2.getOrElse(Seq()))))
+        case fun1 ~ args1 ~ Some(term2) =>
+          PredicateFormula(FOL.equality, Seq(createFunctionTerm(fun1, args1.getOrElse(Seq())), term2))
 
         case _ => throw UnreachableException
       },
@@ -359,7 +359,7 @@ object Parser {
         label match {
           case FOL.equality =>
             args match {
-              case Seq(first, second) => Seq(invertTerm(first) ~ Some(invertTerm(second)))
+              case Seq(first, second) => Seq(invertTerm(first) ~ Some(second))
               case _ => Seq()
             }
           case other =>
