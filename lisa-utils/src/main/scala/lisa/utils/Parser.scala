@@ -9,11 +9,15 @@ import scallion.*
 import scallion.util.Unfolds.unfoldRight
 import silex.*
 
-object Parser {
+class ParserException(msg: String) extends Exception(msg)
 
-  class ParserException(msg: String) extends Exception(msg)
-  object UnreachableException extends ParserException("Internal error: expected unreachable")
-  class PrintFailedException(inp: Sequent | Formula | Term) extends ParserException(s"Printing of $inp failed unexpectedly")
+object UnreachableException extends ParserException("Internal error: expected unreachable")
+
+class PrintFailedException(inp: Sequent | Formula | Term) extends ParserException(s"Printing of $inp failed unexpectedly")
+
+class Parser(infixPredicates: Set[String] = Set.empty, infixFunctions: Set[String] = Set.empty) {
+  val lexer: SequentLexer = SequentLexer(infixPredicates, infixFunctions)
+  val parser: SequentParser = SequentParser(infixPredicates, infixFunctions)
 
   /**
    * Parses a sequent from a string. A sequent consists of the left and right side, separated by `⊢` or `|-`.
@@ -24,7 +28,7 @@ object Parser {
    * @return parsed sequent on success, throws an exception when unexpected input or end of input.
    */
   def parseSequent(s: String): Sequent =
-    extractParseResult(SequentParser.parseSequent(SequentLexer(s.iterator)))
+    extractParseResult(parser.parseSequent(lexer(s.iterator)))
 
   /**
    * Parses a formula from a string. A formula can be:
@@ -40,7 +44,7 @@ object Parser {
    * @return parsed formula on success, throws an exception when unexpected input or end of input.
    */
   def parseFormula(s: String): Formula =
-    extractParseResult(SequentParser.parseFormula(SequentLexer(s.iterator)))
+    extractParseResult(parser.parseFormula(lexer(s.iterator)))
 
   /**
    * Parses a term from a string. A term is a constant `c`, a schematic variable `?x` or an application of a constant `f(a)`
@@ -50,13 +54,13 @@ object Parser {
    * @return parsed term on success, throws an exception when unexpected input or end of input.
    */
   def parseTerm(s: String): Term =
-    extractParseResult(SequentParser.parseTerm(SequentLexer(s.iterator)))
+    extractParseResult(parser.parseTerm(lexer(s.iterator)))
 
-  private def extractParseResult[T](r: SequentParser.ParseResult[T]): T = r match {
-    case SequentParser.Parsed(value, _) => value
+  private def extractParseResult[T](r: parser.ParseResult[T]): T = r match {
+    case parser.Parsed(value, _) => value
     // TODO: at position
-    case SequentParser.UnexpectedToken(token, _) => throw ParserException(s"Unexpected input: ${SequentLexer.unapply(Iterator(token))}")
-    case SequentParser.UnexpectedEnd(_) => throw ParserException(s"Unexpected end of input")
+    case parser.UnexpectedToken(token, _) => throw ParserException(s"Unexpected input: ${lexer.unapply(Iterator(token))}")
+    case parser.UnexpectedEnd(_) => throw ParserException(s"Unexpected end of input")
   }
 
   /**
@@ -66,7 +70,7 @@ object Parser {
    * @param s sequent to print
    * @return string representation of the sequent, or the smallest component thereof, on which printing failed
    */
-  def printSequent(s: Sequent): String = SequentParser
+  def printSequent(s: Sequent): String = parser
     .printSequent(s)
     .getOrElse({
       // attempt to print individual formulas. It might throw a more detailed PrintFailedException
@@ -79,7 +83,7 @@ object Parser {
    * @param f formula to print
    * @return string representation of the formula, or the smallest component thereof, on which printing failed
    */
-  def printFormula(f: Formula): String = SequentParser
+  def printFormula(f: Formula): String = parser
     .printFormula(f)
     .getOrElse({
       f match {
@@ -94,7 +98,7 @@ object Parser {
    * @param t term to print
    * @return string representation of the term, or the smallest component thereof, on which printing failed
    */
-  def printTerm(t: Term): String = SequentParser
+  def printTerm(t: Term): String = parser
     .printTerm(t)
     .getOrElse({
       t match {
@@ -104,51 +108,52 @@ object Parser {
       throw PrintFailedException(t)
     })
 
-  private[Parser] object SequentLexer extends Lexers with CharLexers {
-    sealed abstract class FormulaToken(stringRepr: String) {
-      override def toString: String = stringRepr
-    }
+  private[Parser] sealed abstract class FormulaToken(stringRepr: String) {
+    override def toString: String = stringRepr
+  }
 
-    case object ForallToken extends FormulaToken(Forall.id)
+  case object ForallToken extends FormulaToken(Forall.id)
 
-    case object ExistsOneToken extends FormulaToken(ExistsOne.id)
+  case object ExistsOneToken extends FormulaToken(ExistsOne.id)
 
-    case object ExistsToken extends FormulaToken(Exists.id)
+  case object ExistsToken extends FormulaToken(Exists.id)
 
-    case object DotToken extends FormulaToken(".")
+  case object DotToken extends FormulaToken(".")
 
-    case object AndToken extends FormulaToken(And.id)
+  case object AndToken extends FormulaToken(And.id)
 
-    case object OrToken extends FormulaToken(Or.id)
+  case object OrToken extends FormulaToken(Or.id)
 
-    case object ImpliesToken extends FormulaToken(Implies.id)
+  case object ImpliesToken extends FormulaToken(Implies.id)
 
-    case object IffToken extends FormulaToken(Iff.id)
+  case object IffToken extends FormulaToken(Iff.id)
 
-    case object NegationToken extends FormulaToken(Neg.id)
+  case object NegationToken extends FormulaToken(Neg.id)
 
-    case object TrueToken extends FormulaToken("⊤")
+  case object TrueToken extends FormulaToken("⊤")
 
-    case object FalseToken extends FormulaToken("⊥")
+  case object FalseToken extends FormulaToken("⊥")
 
-    case object EqualityToken extends FormulaToken(equality.id)
+  case class InfixPredicateToken(id: String) extends FormulaToken(id)
 
-    // Constant functions and predicates
-    case class ConstantToken(id: String) extends FormulaToken(id)
+  case class InfixFunctionToken(id: String) extends FormulaToken(id)
 
-    // Variables, schematic functions and predicates
-    case class SchematicToken(id: String) extends FormulaToken("?" + id)
+  // Constant functions and predicates
+  case class ConstantToken(id: String) extends FormulaToken(id)
 
-    case class ParenthesisToken(isOpen: Boolean) extends FormulaToken(if (isOpen) "(" else ")")
+  // Variables, schematic functions and predicates
+  case class SchematicToken(id: String) extends FormulaToken("?" + id)
 
-    case object CommaToken extends FormulaToken(",")
+  case class ParenthesisToken(isOpen: Boolean) extends FormulaToken(if (isOpen) "(" else ")")
 
-    case object SemicolonToken extends FormulaToken(";")
+  case object CommaToken extends FormulaToken(",")
 
-    case object SequentToken extends FormulaToken("⊢")
+  case object SemicolonToken extends FormulaToken(";")
 
-    case object SpaceToken extends FormulaToken(" ")
+  case object SequentToken extends FormulaToken("⊢")
 
+  case object SpaceToken extends FormulaToken(" ")
+  private[Parser] class SequentLexer(infixPredicates: Set[String], infixFunctions: Set[String]) extends Lexers with CharLexers {
     type Token = FormulaToken
     // TODO: add positions ==> ranges to tokens
     type Position = Unit
@@ -158,7 +163,8 @@ object Parser {
       word("∃!") |> { _ => ExistsOneToken },
       elem('∃') |> { _ => ExistsToken },
       elem('.') |> { _ => DotToken },
-      elem('=') |> { _ => EqualityToken },
+      infixPredicates.foldLeft(elem('='))((acc, s) => acc | word(s)) |> { cs => InfixPredicateToken(cs.mkString) },
+      infixFunctions.foldLeft(oneOf(Seq()))((acc, s) => acc | word(s)) |> { cs => InfixFunctionToken(cs.mkString) },
       elem('∧') | word("/\\") |> { _ => AndToken },
       elem('∨') | word("\\/") |> { _ => OrToken },
       elem('⇒') | word("=>") | word("==>") |> { _ => ImpliesToken },
@@ -198,15 +204,15 @@ object Parser {
               case NegationToken | ConstantToken(_) | SchematicToken(_) | TrueToken | FalseToken | ParenthesisToken(_) | SpaceToken => l :+ t.toString
               // space after: quantifiers and separators
               case ForallToken | ExistsToken | ExistsOneToken | DotToken | CommaToken | SemicolonToken => l :+ t.toString :+ space
-              // space before and after: equality, connectors, sequent symbol
-              case EqualityToken | AndToken | OrToken | ImpliesToken | IffToken | SequentToken => l :+ space :+ t.toString :+ space
+              // space before and after: infix predicates, infix functions, connectors, sequent symbol
+              case InfixPredicateToken(_) | InfixFunctionToken(_) | AndToken | OrToken | ImpliesToken | IffToken | SequentToken => l :+ space :+ t.toString :+ space
             }
         }
         .mkString
     }
   }
 
-  private[Parser] object SequentParser extends Parsers {
+  private[Parser] class SequentParser(infixPredicates: Set[String], infixFunctions: Set[String]) extends Parsers {
     sealed abstract class TokenKind
     // and, or are both (left) associative and bind tighter than implies, iff
     case object AndKind extends TokenKind
@@ -216,7 +222,8 @@ object Parser {
     case object NegationKind extends TokenKind
     case object BooleanConstantKind extends TokenKind
     case object FunctionOrPredicateKind extends TokenKind
-    case object EqualityKind extends TokenKind
+    case object InfixPredicateKind extends TokenKind
+    case object InfixFunctionKind extends TokenKind
     case object CommaKind extends TokenKind
     case class ParenthesisKind(isOpen: Boolean) extends TokenKind
     case object BinderKind extends TokenKind
@@ -225,7 +232,6 @@ object Parser {
     case object SequentSymbolKind extends TokenKind
     case object OtherKind extends TokenKind
 
-    import SequentLexer._
     type Token = FormulaToken
     type Kind = TokenKind
 
@@ -239,7 +245,8 @@ object Parser {
       case NegationToken => NegationKind
       case TrueToken | FalseToken => BooleanConstantKind
       case _: ConstantToken | _: SchematicToken => FunctionOrPredicateKind
-      case EqualityToken => EqualityKind
+      case _: InfixPredicateToken => InfixPredicateKind
+      case _: InfixPredicateToken => InfixFunctionKind
       case CommaToken => CommaKind
       case ParenthesisToken(isOpen) => ParenthesisKind(isOpen)
       case ExistsToken | ExistsOneToken | ForallToken => BinderKind
@@ -259,14 +266,22 @@ object Parser {
 
     val comma: Syntax[Unit] = elem(CommaKind).unit(CommaToken)
 
-    val eq: Syntax[Unit] = elem(EqualityKind).unit(EqualityToken)
-
     val semicolon: Syntax[Unit] = elem(SemicolonKind).unit(SemicolonToken)
 
     val sequentSymbol: Syntax[Unit] = elem(SequentSymbolKind).unit(SequentToken)
     ///////////////////////////////////////////////////////////////////
 
     //////////////////////// LABELS ///////////////////////////////////
+    val INFIX_ARITY = 2
+
+    val infixPredicateLabel: Syntax[PredicateLabel] = accept(InfixPredicateKind) { case InfixPredicateToken(id) =>
+      ConstantPredicateLabel(id, INFIX_ARITY)
+    }
+
+    val infixFunctionLabel: Syntax[FunctionLabel] = accept(InfixFunctionKind) { case InfixFunctionToken(id) =>
+      ConstantFunctionLabel(id, INFIX_ARITY)
+    }
+
     val toplevelConnector: Syntax[Implies.type | Iff.type] = accept(TopLevelConnectorKind)(
       {
         case ImpliesToken => Implies
@@ -297,7 +312,7 @@ object Parser {
         }
     }
 
-    lazy val term: Syntax[Term] = recursive(
+    lazy val simpleTerm: Syntax[Term] = recursive(
       (elem(FunctionOrPredicateKind) ~ opt(args)).map(
         {
           case ConstantToken(id) ~ maybeArgs =>
@@ -310,6 +325,17 @@ object Parser {
         t => Seq(invertTerm(t))
       )
     )
+
+    lazy val infixFunction: Syntax[Term] = (term ~ infixFunctionLabel ~ term).map(
+      { case t1 ~ label ~ t2 =>
+        FunctionTerm(label, Seq(t1, t2))
+      },
+      {
+        case FunctionTerm(label, Seq(t1, t2)) if infixFunctions.contains(label.id) => Seq(t1 ~ label ~ t2)
+      }
+    )
+
+    lazy val term: Syntax[Term] = simpleTerm | open.skip ~ infixFunction ~ closed.skip
     ///////////////////////////////////////////////////////////////////
 
     //////////////////////// FORMULAS /////////////////////////////////
@@ -339,7 +365,7 @@ object Parser {
       }
     )
 
-    val predicate: Syntax[PredicateFormula] = (elem(FunctionOrPredicateKind) ~ opt(args) ~ opt(eq.skip ~ term)).map(
+    val predicate: Syntax[PredicateFormula] = (elem(FunctionOrPredicateKind) ~ opt(args) ~ opt(infixPredicateLabel ~ term)).map(
       {
         // predicate application
         case ConstantToken(id) ~ maybeArgs ~ None =>
@@ -349,17 +375,17 @@ object Parser {
         case SchematicToken(id) ~ None ~ None =>
           PredicateFormula(VariableFormulaLabel(id), Seq())
 
-        // equality of two function applications
-        case fun1 ~ args1 ~ Some(term2) =>
-          PredicateFormula(FOL.equality, Seq(createFunctionTerm(fun1, args1.getOrElse(Seq())), term2))
+        // infix predicate of two terms
+        case fun1 ~ args1 ~ Some(infix ~ term2) =>
+          PredicateFormula(infix, Seq(createFunctionTerm(fun1, args1.getOrElse(Seq())), term2))
 
         case _ => throw UnreachableException
       },
       { case PredicateFormula(label, args) =>
         label match {
-          case FOL.equality =>
+          case l if infixPredicates.contains(l.id) =>
             args match {
-              case Seq(first, second) => Seq(invertTerm(first) ~ Some(second))
+              case Seq(first, second) => Seq(invertTerm(first) ~ Some(label ~ second))
               case _ => Seq()
             }
           case other =>
@@ -488,17 +514,18 @@ object Parser {
     val parser: Parser[Sequent] = Parser(sequent)
     val printer: PrettyPrinter[Sequent] = PrettyPrinter(sequent)
 
-    val formulaParser: SequentParser.Parser[Formula] = Parser(formula)
-    val formulaPrinter: SequentParser.PrettyPrinter[Formula] = PrettyPrinter(formula)
+    val formulaParser: Parser[Formula] = Parser(formula)
+    val formulaPrinter: PrettyPrinter[Formula] = PrettyPrinter(formula)
 
-    val termParser: SequentParser.Parser[Term] = Parser(term)
-    val termPrinter: SequentParser.PrettyPrinter[Term] = PrettyPrinter(term)
+    val termParser: Parser[Term] = Parser(term)
+    val termPrinter: PrettyPrinter[Term] = PrettyPrinter(term)
 
     def apply(it: Iterator[Token]): ParseResult[Sequent] = parseSequent(it)
 
     def unapply(s: Sequent): Option[String] = printSequent(s)
 
     def parseSequent(it: Iterator[Token]): ParseResult[Sequent] = parser(it)
+    // TODO: either take a lexer in constructor (also ensures that infixes are in sync) or move the unapply out of parser
     def printSequent(s: Sequent): Option[String] = printer(s).map(SequentLexer.unapply)
 
     def parseFormula(it: Iterator[Token]): ParseResult[Formula] = formulaParser(it)
