@@ -296,6 +296,8 @@ object Parser {
         label match {
           case ConstantFunctionLabel(id, _) => ConstantToken(id) ~ optArgs
           case SchematicFunctionLabel(id, _) => SchematicToken(id) ~ optArgs
+          // covered by VariableTerm case above
+          case VariableLabel(_) => throw UnreachableException
         }
     }
 
